@@ -21,62 +21,107 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
-entity simulator is
-	Port ( POC : in STD_LOGIC;
-	SYSCLK : in STD_LOGIC;
-	EMVUP : in STD_LOGIC;
-	EMVDN : in STD_LOGIC;
-	EOPEN : in STD_LOGIC;
-	ECLOSE : in STD_LOGIC;
-	ECOMP : buffer STD_LOGIC;
-	EF : out STD_LOGIC_VECTOR (3 downto 0));
-end simulator;
+entity controller is
+    Port ( UP_REQ : in  STD_LOGIC_VECTOR (2 downto 0);
+           DN_REQ : in  STD_LOGIC_VECTOR (3 downto 1);
+           GO_REQ : in  STD_LOGIC_VECTOR (3 downto 0);
+           POC : in  STD_LOGIC;
+           SYSCLK : in  STD_LOGIC;
+           FLOOR_IND : out  STD_LOGIC_VECTOR (3 downto 0);
+           EMVUP : out  STD_LOGIC;
+           EMVDN : out  STD_LOGIC;
+           EOPEN : out  STD_LOGIC;
+           ECLOSE : out  STD_LOGIC;
+           ECOMP : in  STD_LOGIC;
+           EF : in  STD_LOGIC_VECTOR (3 downto 0));
+end controller;
 
-architecture Behavioral of simulator is
-	signal EDOOR, EINPUT : STD_LOGIC;
-	signal EFLOOR : UNSIGNED(3 downto 0);
-	signal COUNT : UNSIGNED(2 downto 0); -- Count is just a delay
-
+architecture Behavioral of controller is
+    -- Internal signals
+    signal AB_MASK : UNSIGNED(3 downto 0); -- bitmask for floors above current
+    signal BL_MASK : UNSIGNED(3 downto 0); -- bitmask for floors below current
+    signal ALL_REQ : STD_LOGIC_VECTOR(3 downto 0); -- stores whether or not there is a
+                                           -- request for each floor
+    signal AB_REQ : STD_LOGIC; -- request above current floor
+    signal BL_REQ : STD_LOGIC; -- request below current floor
+    
+    signal EF_UP_REQ : STD_LOGIC; -- up request at current floor
+    signal EF_DN_REQ : STD_LOGIC; -- down request at current floor
+    signal EF_GO_REQ : STD_LOGIC; -- go request at current floor
+    
+    signal EF_DOOR : STD_LOGIC; -- door needs to be opened at current floor
+    
+    signal QUP : STD_LOGIC; -- elevator travelling up
+    signal QDOWN : STD_LOGIC; -- elevator travelling down
+    
 begin
-	EDOOR <= EOPEN or ECLOSE;
-	EINPUT <= EMVUP or EMVDN or EDOOR;
-	EF <= STD_LOGIC_VECTOR(EFLOOR);
+    -- Process internal signals
+    BL_MASK <= unsigned(EF) - 1;
+    AB_MASK <= not(BL_MASK) sll 1;
+    ALL_REQ <= ('0' & UP_REQ) or (DN_REQ & '0') or GO_REQ;
+    AB_REQ <= '1' when (UNSIGNED(ALL_REQ) and AB_MASK) > 0 else '0';
+    BL_REQ <= '1' when (UNSIGNED(ALL_REQ) and BL_MASK) > 0 else '0';
+    
+    EF_UP_REQ <= '1' when UNSIGNED(EF and ('0' & UP_REQ)) > 0 else '0';
+    EF_DN_REQ <= '1' when UNSIGNED(EF and (DN_REQ & '0')) > 0 else '0';
+    EF_GO_REQ <= '1' when UNSIGNED(EF and GO_REQ) > 0 else '0';
+    
+    EF_DOOR <= EF_GO_REQ or (EF_UP_REQ and not(QDOWN)) or (EF_DN_REQ and not(QUP));
+    
+    -- Output
+    FLOOR_IND <= EF; -- indicates the floor in which the elevator is located
+    
+    -- Handle active clock edge
+    process (SYSCLK)
+    begin
+        if rising_edge(SYSCLK) then
+        
+            -- Clear outputs
+            EMVUP <= '0';
+            EMVDN <= '0';
+            EOPEN <= '0';
+            ECLOSE <= '0';
+            
+            -- Power-on clear (clear elevator state)
+            if POC='1' then
+                QUP <= '0';
+                QDOWN <= '0';
+                
+            -- Elevator has no running operations
+            elsif ECOMP='1' then
 
--- Process starts on the rising edge of the SYSCLK
-process (SYSCLK)
-begin
-    if rising_edge(SYSCLK) then
-        -- Power on clear case
-        if POC='1' then
-            EFLOOR <= "0001"; -- Set EFLOOR to the 1st floor
-            ECOMP <= '1'; -- Set ECOMP to '1'
-        -- If ECOMP is '0'
-        elsif ECOMP='0' then
-            -- If COUNT reaches "000", set ECOMP to '1'
-            if COUNT="000" then
-                ECOMP <= '1';
-            -- Otherwise, decrement COUNT
-            else
-                COUNT <= COUNT - 1;
-            end if;
-        -- If EINPUT is '1'
-        elsif EINPUT='1' then
-            ECOMP <= '0'; -- Set ECOMP to '0'
-            -- If EDOOR is '1'
-            if EDOOR='1' then
-                COUNT <= "101"; -- Set COUNT to 5
-            -- If EDOOR is '0'
-            else
-                COUNT <= "011"; -- Set COUNT to 3
-                -- If EMVUP is '1' and not on the top floor, move up
-                if EMVUP='1' and EFLOOR(3)='0' then
-                    EFLOOR <= EFLOOR sll 1;
-                -- If EMVDN is '1' and not on the bottom floor, move down
-                elsif EMVDN='1' and EFLOOR(0)='0' then
-                    EFLOOR <= EFLOOR srl 1;
+                if EF_DOOR='1' then
+                    EOPEN <= '1';
+                    ECLOSE <= '0';
+                else
+                    EOPEN <= '0';
+                    ECLOSE <= '1';
+
+                    if AB_REQ='1' and QDOWN='0' then
+                        EMVUP <= '1';
+                        QUP <= '1';
+                        QDOWN <= '0';
+
+                    elsif BL_REQ='1' and QUP='0' then
+                        EMVDN <= '1';
+                        QDOWN <= '1';
+                        QUP <= '0';
+
+                    else
+                        EMVUP <= '0';
+                        EMVDN <= '0';
+                        QUP <= '0';
+                        QDOWN <= '0';
+                    end if;
                 end if;
+
+            else
+                EMVUP <= '0';
+                EMVDN <= '0';
+                EOPEN <= '0';
+                ECLOSE <= '0';
             end if;
         end if;
-    end if;
-end process;
+    end process;
 end Behavioral;
+

@@ -125,29 +125,62 @@ BEGIN
     
     
     -- Stimulus process
-    stim_proc: process
-    begin		
+stim_proc: process
+begin
 
-        wait for SYSCLK_period;
-        POC <= '0';
+    wait for SYSCLK_period;
+    POC <= '0';
 
-        wait for SYSCLK_period;
+    wait for SYSCLK_period;
 
-        -- insert stimulus here
-        UP_REQ(3) <= '1';
-        
-        wait for 1000 ms;
-        UP_REQ(1) <= '1';
-        
-        wait for 1000 ms;
-        DN_REQ(4) <= '1';
-        
-        wait for 1000 ms;
-        GO_REQ(2) <= '1';
-        
+    -- Test 1: Simple Up Request
+    UP_REQ(2) <= '1';
+    wait for 1000 ms;
+    assert (EMVUP = '1' and EMVDN = '0') report "Test 1 failed: Simple Up Request" severity ERROR;
 
+    -- Test 2: Simple Down Request
+    UP_REQ(2) <= '0';
+    DN_REQ(3) <= '1';
+    wait for 1000 ms;
+    assert (EMVUP = '0' and EMVDN = '1') report "Test 2 failed: Simple Down Request" severity ERROR;
 
-        wait;
-    end process;
+    -- Test 3: Go request while moving up
+    UP_REQ(0) <= '1';
+    GO_REQ(1) <= '1';
+    wait for 1000 ms;
+    assert (EMVUP = '1' and EOPEN = '0' and ECLOSE = '0') report "Test 3 failed: Go request while moving up" severity ERROR;
+
+    -- Test 4: Go request while moving down
+    UP_REQ(0) <= '0';
+    DN_REQ(3) <= '1';
+    GO_REQ(2) <= '1';
+    wait for 1000 ms;
+    assert (EMVDN = '1' and EOPEN = '0' and ECLOSE = '0') report "Test 4 failed: Go request while moving down" severity ERROR;
+
+    -- Test 5: Door open and close sequence
+    DN_REQ(3) <= '0';
+    GO_REQ(0) <= '1';
+    wait for 1000 ms;
+    assert (EOPEN = '1' and ECLOSE = '0') report "Test 5 failed: Door open sequence" severity ERROR;
+    
+    wait for 1000 ms;
+    assert (EOPEN = '0' and ECLOSE = '1') report "Test 5 failed: Door close sequence" severity ERROR;
+
+    -- Test 6: Concurrent Up and Down requests
+    UP_REQ(1) <= '1';
+    DN_REQ(2) <= '1';
+    wait for 1000 ms;
+    assert (EMVUP = '1' and EMVDN = '0') report "Test 6 failed: Concurrent Up and Down requests" severity ERROR;
+
+    -- Test 7: Concurrent Go requests
+    UP_REQ(1) <= '0';
+    DN_REQ(2) <= '0';
+    GO_REQ(1) <= '1';
+    GO_REQ(3) <= '1';
+    wait for 1000 ms;
+    assert (EOPEN = '1' and ECLOSE = '0') report "Test 7 failed: Concurrent Go requests" severity ERROR;
+
+    wait;
+end process;
 
 END;

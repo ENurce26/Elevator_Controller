@@ -1,3 +1,22 @@
+----------------------------------------------------------------------------------
+-- Company: 
+-- Engineer: 
+-- 
+-- Create Date:    02:06:20 04/14/2023 
+-- Design Name: 
+-- Module Name:    controller - Behavioral 
+-- Project Name: 
+-- Target Devices: 
+-- Tool versions: 
+-- Description: 
+--
+-- Dependencies: 
+--
+-- Revision: 
+-- Revision 0.01 - File Created
+-- Additional Comments: 
+--
+----------------------------------------------------------------------------------
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
@@ -28,7 +47,7 @@ begin
    -- Internal signals
    -- This process block is sensitive to changes in the EF signal.
 -- EF is the current floor of the elevator represented as a 4-bit STD_LOGIC_VECTOR.
-process (EF) is
+process (EF)
 begin
     -- Compute the BL_MASK by converting EF to unsigned and subtracting 1.
     -- BL_MASK is used to filter requests for floors below the current floor.
@@ -41,7 +60,7 @@ end process;
 
 -- This process block is sensitive to changes in the UP_REQ, DN_REQ, and GO_REQ signals.
 -- UP_REQ, DN_REQ, and GO_REQ are the elevator request signals for moving up, down, and going directly to a floor, respectively.
-process (UP_REQ, DN_REQ, GO_REQ) is
+process (UP_REQ, DN_REQ, GO_REQ)
 begin
     -- Compute the ALL_REQ signal by concatenating '0' with UP_REQ, bitwise OR-ing it with DN_REQ concatenated with '0', and
     -- bitwise OR-ing the result with GO_REQ.
@@ -51,35 +70,55 @@ end process;
 
 -- This process block is sensitive to changes in the ALL_REQ, AB_MASK, and BL_MASK signals.
 -- ALL_REQ represents all the floor requests, AB_MASK is the mask for above-floor requests, and BL_MASK is the mask for below-floor requests.
-process (ALL_REQ, AB_MASK, BL_MASK) is
+process (ALL_REQ, AB_MASK, BL_MASK)
 begin
     -- Compute the AB_REQ signal, which represents if there are any above-floor requests.
     -- It is set to '1' if the bitwise AND between UNSIGNED(ALL_REQ) and AB_MASK is greater than 0; otherwise, it is set to '0'.
-    AB_REQ <= '1' when (UNSIGNED(ALL_REQ) and AB_MASK) > 0 else '0';
+	 if UNSIGNED(ALL_REQ) and AB_MASK > 0 then
+		AB_REQ <= '1';
+	 else 
+		AB_REQ <= '0';
+	 end if;
 
     -- Compute the BL_REQ signal, which represents if there are any below-floor requests.
     -- It is set to '1' if the bitwise AND between UNSIGNED(ALL_REQ) and BL_MASK is greater than 0; otherwise, it is set to '0'.
-    BL_REQ <= '1' when (UNSIGNED(ALL_REQ) and BL_MASK) > 0 else '0';
+	 if UNSIGNED(ALL_REQ) and BL_MASK > 0 then
+		BL_REQ <= '1';
+	 else
+		BL_REQ <= '0';
+	 end if;
+	 
 end process;
 
 -- EF is the current floor, UP_REQ represents up floor requests, DN_REQ represents down floor requests, and GO_REQ represents floor-specific requests.
-process (EF, UP_REQ, DN_REQ, GO_REQ) is
+process (EF, UP_REQ, DN_REQ, GO_REQ)
 begin
     -- Compute the EF_UP_REQ signal, which represents if there are any up requests on the current floor.
     -- It is set to '1' if the bitwise AND between UNSIGNED(EF) and the shifted UP_REQ is greater than 0; otherwise, it is set to '0'.
-    EF_UP_REQ <= '1' when UNSIGNED(EF and ('0' & UP_REQ)) > 0 else '0';
-
+	 if UNSIGNED(EF and ('0' & UP_REQ)) > 0 then
+		EF_UP_REQ <= '1';
+	 else
+		EF_UP_REQ <= '0';
+	 end if;
     -- Compute the EF_DN_REQ signal, which represents if there are any down requests on the current floor.
     -- It is set to '1' if the bitwise AND between UNSIGNED(EF) and the shifted DN_REQ is greater than 0; otherwise, it is set to '0'.
-    EF_DN_REQ <= '1' when UNSIGNED(EF and (DN_REQ & '0')) > 0 else '0';
+	 if UNSIGNED(EF and (DN_REQ & '0')) > 0 then
+		EF_DN_REQ <= '1'; 
+  	 else
+		EF_DN_REQ <= '0';
+	 end if;
 
     -- Compute the EF_GO_REQ signal, which represents if there are any floor-specific requests on the current floor.
     -- It is set to '1' if the bitwise AND between UNSIGNED(EF) and GO_REQ is greater than 0; otherwise, it is set to '0'.
-    EF_GO_REQ <= '1' when UNSIGNED(EF and GO_REQ) > 0 else '0';
+	 if UNSIGNED(EF and GO_REQ) > 0 then
+		EF_GO_REQ <= '1';
+	 else
+		EF_GO_REQ <= '0';
+	 end if;
 end process;
 
 -- QDOWN indicates if the elevator is moving down, and QUP indicates if the elevator is moving up.
-process (EF_UP_REQ, EF_DN_REQ, EF_GO_REQ, QDOWN, QUP) is
+process (EF_UP_REQ, EF_DN_REQ, EF_GO_REQ, QDOWN, QUP)
 begin
     -- Compute the EF_DOOR signal, which represents if the elevator doors should be opened.
     -- The doors should be opened if any of the following conditions are met:
@@ -90,7 +129,8 @@ begin
 end process;
 
 -- This process block handles the active clock edge, SYSCLK.
-process (SYSCLK) begin
+process (SYSCLK) 
+begin
     -- When there's an event (change) in the SYSCLK signal and it is equal to '1'.
     if SYSCLK'event and SYSCLK = '1' then
         -- Initialize output signals to '0'.

@@ -37,90 +37,138 @@ entity controller is
 end controller;
 
 architecture Behavioral of controller is
-    -- Internal signals
-    signal AB_MASK : UNSIGNED(3 downto 0); -- bitmask for floors above current
-    signal BL_MASK : UNSIGNED(3 downto 0); -- bitmask for floors below current
-    signal ALL_REQ : STD_LOGIC_VECTOR(3 downto 0); -- stores whether or not there is a
-                                           -- request for each floor
-    signal AB_REQ : STD_LOGIC; -- request above current floor
-    signal BL_REQ : STD_LOGIC; -- request below current floor
-    
-    signal EF_UP_REQ : STD_LOGIC; -- up request at current floor
-    signal EF_DN_REQ : STD_LOGIC; -- down request at current floor
-    signal EF_GO_REQ : STD_LOGIC; -- go request at current floor
-    
-    signal EF_DOOR : STD_LOGIC; -- door needs to be opened at current floor
-    
-    signal QUP : STD_LOGIC; -- elevator travelling up
-    signal QDOWN : STD_LOGIC; -- elevator travelling down
-    
+    type elevator_state is (IDLE, MOVE_UP, MOVE_DOWN);
+    signal state : elevator_state := IDLE;
+    signal direction : STD_LOGIC; -- '0' for UP, '1' for DOWN
+    signal pending_UP : STD_LOGIC_VECTOR(2 downto 0) := (others => '0');
+    signal pending_DOWN : STD_LOGIC_VECTOR(3 downto 1) := (others => '0');
+    signal pending_GO : STD_LOGIC_VECTOR(3 downto 0) := (others => '0');
+    signal current_floor : STD_LOGIC_VECTOR(3 downto 0) := (others => '0');
+    signal temp_dn_req : STD_LOGIC_VECTOR(3 downto 1);
+
 begin
-    -- Process internal signals
-    BL_MASK <= unsigned(EF) - 1;
-    AB_MASK <= not(BL_MASK) sll 1;
-    ALL_REQ <= ('0' & UP_REQ) or (DN_REQ & '0') or GO_REQ;
-    AB_REQ <= '1' when (UNSIGNED(ALL_REQ) and AB_MASK) > 0 else '0';
-    BL_REQ <= '1' when (UNSIGNED(ALL_REQ) and BL_MASK) > 0 else '0';
-    
-    EF_UP_REQ <= '1' when UNSIGNED(EF and ('0' & UP_REQ)) > 0 else '0';
-    EF_DN_REQ <= '1' when UNSIGNED(EF and (DN_REQ & '0')) > 0 else '0';
-    EF_GO_REQ <= '1' when UNSIGNED(EF and GO_REQ) > 0 else '0';
-    
-    EF_DOOR <= EF_GO_REQ or (EF_UP_REQ and not(QDOWN)) or (EF_DN_REQ and not(QUP));
-    
-    -- Output
-    FLOOR_IND <= EF; -- indicates the floor in which the elevator is located
-    
-    -- Handle active clock edge
     process (SYSCLK)
     begin
         if rising_edge(SYSCLK) then
-        
-            -- Clear outputs
-            EMVUP <= '0';
-            EMVDN <= '0';
-            EOPEN <= '0';
-            ECLOSE <= '0';
-            
-            -- Power-on clear (clear elevator state)
-            if POC='1' then
-                QUP <= '0';
-                QDOWN <= '0';
-                
-            -- Elevator has no running operations
-            elsif ECOMP='1' then
-
-                if EF_DOOR='1' then
-                    EOPEN <= '1';
-                    ECLOSE <= '0';
-                else
-                    EOPEN <= '0';
-                    ECLOSE <= '1';
-
-                    if AB_REQ='1' and QDOWN='0' then
-                        EMVUP <= '1';
-                        QUP <= '1';
-                        QDOWN <= '0';
-
-                    elsif BL_REQ='1' and QUP='0' then
-                        EMVDN <= '1';
-                        QDOWN <= '1';
-                        QUP <= '0';
-
-                    else
-                        EMVUP <= '0';
-                        EMVDN <= '0';
-                        QUP <= '0';
-                        QDOWN <= '0';
-                    end if;
-                end if;
-
+				EMVUP <= '0';
+				EMVDN <= '0';
+				EOPEN <= '0';
+				ECLOSE <= '0';
+            if POC = '1' then
+                -- Reset pending requests
+                pending_UP <= (others => '0');
+                pending_DOWN <= (others => '0');
+                pending_GO <= (others => '0');
+                current_floor <= EF;
+                state <= IDLE;		               
             else
-                EMVUP <= '0';
-                EMVDN <= '0';
-                EOPEN <= '0';
-                ECLOSE <= '0';
+                -- Update pending requests
+                pending_UP <= pending_UP or UP_REQ;
+                pending_DOWN <= pending_DOWN or DN_REQ;
+                pending_GO <= pending_GO or GO_REQ;
+
+                temp_dn_req <= DN_REQ(3 downto 2) & '0'; -- 0th floor request is not valid for down
+
+                case state is
+                    when IDLE =>
+                        if pending_UP /= "000" or pending_DOWN /= "000" or pending_GO /= "0000" then
+                            if unsigned(EF) > unsigned(temp_dn_req) then
+                                direction <= '0';
+                                state <= MOVE_UP;
+										 
+                            else
+                                direction <= '1';
+                                state <= MOVE_DOWN;
+                            end if;
+                        end if;
+
+                    when MOVE_UP =>
+                        if direction = '0' then
+                            EMVUP <= '1';
+                            EMVDN <= '0';
+                        else
+                            EMVUP <= '0';
+                            EMVDN <= '1';
+                        end if;
+
+                        if ECOMP = '1' and EF = current_floor then
+                            if pending_UP(to_integer(unsigned(EF))) = '1' or
+                               pending_DOWN(to_integer(unsigned(EF))) = '1' or
+                               pending_GO(to_integer(unsigned(EF))) = '1' then
+                                EOPEN <= '1';
+                                ECLOSE <= '0';
+                                pending_UP(to_integer(unsigned(EF))) <= '0';
+                                pending_DOWN(to_integer(unsigned(EF))) <= '0';
+                                pending_GO(to_integer(unsigned(EF))) <= '0';
+                            else
+                                EOPEN <= '0';
+                                ECLOSE <= '1';
+                            end if;
+                        elsif ECOMP = '0' then
+                            EOPEN <= '0';
+                            ECLOSE <= '1';
+                            current_floor <= EF;
+                            if direction = '0' then
+                                if pending_UP = "000" and pending_GO = "0000" then
+                                    direction <= '1';
+                                end if;
+                            else
+                                if pending_DOWN = "000" and pending_GO = "0000" then
+                                    direction <= '0';
+                                end if;
+                            end if;
+                            if pending_UP = "000" and pending_DOWN = "000" and pending_GO = "0000" then
+                                state <= IDLE;
+                            end if;
+                        end if;
+
+                    when MOVE_DOWN =>
+                        if direction = '0' then
+                            EMVUP <= '1';
+                            EMVDN <= '0';
+                        else
+                            EMVUP <= '0';
+                            EMVDN <= '1';
+                        end if;
+
+                        if ECOMP = '1' and EF = current_floor then
+                            if pending_UP(to_integer(unsigned(EF))) = '1' or
+                               pending_DOWN(to_integer(unsigned(EF))) = '1' or
+                               pending_GO(to_integer(unsigned(EF))) = '1' then
+                                EOPEN <= '1';
+                                ECLOSE <= '0';
+                                pending_UP(to_integer(unsigned(EF))) <= '0';
+                                pending_DOWN(to_integer(unsigned(EF))) <= '0';
+                                pending_GO(to_integer(unsigned(EF))) <= '0';
+                            else
+                                EOPEN <= '0';
+                                ECLOSE <= '1';
+                            end if;
+                        elsif ECOMP = '0' then
+                            EOPEN <= '0';
+                            ECLOSE <= '1';
+                            current_floor <= EF;
+                            if direction = '1' then
+                                if pending_DOWN = "000" and pending_GO = "0000" then
+                                    direction <= '0';
+                                end if;
+                            else
+                                if pending_UP = "000" and pending_GO = "0000" then
+                                    direction <= '1';
+                                end if;
+                            end if;
+                            if pending_UP = "000" and pending_DOWN = "000" and pending_GO = "0000" then
+                                state <= IDLE;
+                            end if;
+                        end if;
+
+                    when others =>
+                        null;
+                end case;
             end if;
         end if;
     end process;
+
+    FLOOR_IND <= EF;
+
 end Behavioral;

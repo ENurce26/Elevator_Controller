@@ -23,155 +23,97 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
-entity simulator is
-	Port (
-		POC : in STD_LOGIC;
-		SYSCLK : in STD_LOGIC;
-		EMVUP : in STD_LOGIC;
-		EMVDN : in STD_LOGIC;
-		EOPEN : in STD_LOGIC;
-		ECLOSE : in STD_LOGIC;
-		ECOMP : buffer STD_LOGIC;
-		EF : out STD_LOGIC_VECTOR (3 downto 0)
-	);
-end simulator;
+ENTITY simulator IS
+    PORT (
+        POC : IN STD_LOGIC;
+        SYSCLK : IN STD_LOGIC;
+        EMVUP : IN STD_LOGIC;
+        EMVDN : IN STD_LOGIC;
+        EOPEN : IN STD_LOGIC;
+        ECLOSE : IN STD_LOGIC;
+        ECOMP : BUFFER STD_LOGIC;
+        EF : OUT STD_LOGIC_VECTOR (3 downto 0)
+    );
+END simulator;
 
-architecture Behavioral of simulator is
-	signal EDOOR, EINPUT : STD_LOGIC;
-	signal EFLOOR : UNSIGNED(3 downto 0);
-	signal COUNT : UNSIGNED(2 downto 0); -- Count is just a delay
+ARCHITECTURE behavioral OF simulator IS
+    TYPE elevator_state IS (INIT, IDLE, MOVE_UP, MOVE_DOWN, DOOR_OPEN, DOOR_CLOSE);
+    SIGNAL current_state : elevator_state;
+    SIGNAL next_state : elevator_state;
+    SIGNAL EFLOOR : UNSIGNED(3 downto 0);
 
-begin
-	EDOOR <= EOPEN or ECLOSE;
-	EINPUT <= EMVUP or EMVDN or EDOOR;
-	EF <= STD_LOGIC_VECTOR(EFLOOR);
+BEGIN
+    PROCESS (SYSCLK, POC)
+    BEGIN
+        IF (POC = '1') THEN
+            current_state <= INIT;
+        ELSIF rising_edge(SYSCLK) THEN
+            current_state <= next_state;
+        END IF;
+    END PROCESS;
 
-	-- Process starts on the rising edge of the SYSCLK
-	process (SYSCLK)
-	begin
-		-- Assign signals for elevator door operation, elevator input commands, and the current floor output
-		EDOOR <= EOPEN or ECLOSE;
-		EINPUT <= EMVUP or EMVDN or EDOOR;
-		EF <= STD_LOGIC_VECTOR(EFLOOR);
-
-		if rising_edge(SYSCLK) then
-			-- Power on clear case
-			if POC='1' then
-				EFLOOR <= "0001"; -- Set EFLOOR to the 1st floor
-				ECOMP <= '1'; -- Set ECOMP to '1'
-			-- If ECOMP is '0'
-			elsif ECOMP='0' then
-				-- If COUNT reaches "000", set ECOMP to '1'
-				if COUNT="000" then
-					ECOMP <= '1';
-				-- Otherwise, decrement COUNT
-				else
-					COUNT <= COUNT - 1;
-				end if;
-			-- If EINPUT is '1'
-			elsif EINPUT='1' then
-				ECOMP <= '0'; -- Set ECOMP to '0'
-				-- If EDOOR is '1'
-				if EDOOR='1' then
-					COUNT <= "101"; -- Set COUNT to 5
-				-- If EDOOR is '0'
-				else
-					COUNT <= "011"; -- Set COUNT to 3
-					-- If EMVUP is '1' and not on the top floor, move up
-					if EMVUP='1' and EFLOOR /= "1000" then
-						EFLOOR <= EFLOOR sll 1;
-					-- If EMVDN is '1' and not on the bottom floor, move down
-					elsif EMVDN='1' and EFLOOR /= "0001" then
-						EFLOOR <= EFLOOR srl 1;
-					end if;
-				end if;
-			end if;
-		end if;
-	end process;
-end Behavioral;
-
-
--- 
--- Create Date:    02:10:14 04/14/2023 
--- Design Name: 
--- Module Name:    simulator - Behavioral 
--- Project Name: 
--- Target Devices: 
--- Tool versions: 
--- Description: 
---
--- Dependencies: 
---
--- Revision: 
--- Revision 0.01 - File Created
--- Additional Comments: 
---
-----------------------------------------------------------------------------------
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
-
-entity simulator is
-	Port ( POC : in STD_LOGIC;
-	SYSCLK : in STD_LOGIC;
-	EMVUP : in STD_LOGIC;
-	EMVDN : in STD_LOGIC;
-	EOPEN : in STD_LOGIC;
-	ECLOSE : in STD_LOGIC;
-	ECOMP : buffer STD_LOGIC;
-	EF : out STD_LOGIC_VECTOR (3 downto 0));
-end simulator;
-
-architecture Behavioral of simulator is
-	signal EDOOR, EINPUT : STD_LOGIC;
-	signal EFLOOR : UNSIGNED(3 downto 0);
-	signal COUNT : UNSIGNED(2 downto 0); -- Count is just a delay
-
-begin
-	EDOOR <= EOPEN or ECLOSE;
-	EINPUT <= EMVUP or EMVDN or EDOOR;
-	EF <= STD_LOGIC_VECTOR(EFLOOR);
-
--- Process starts on the rising edge of the SYSCLK
-process (SYSCLK)
-begin
--- Assign signals for elevator door operation, elevator input commands, and the current floor output
-	 ELEVATOR_DOOR <= EOPEN or ECLOSE;
-    ELEVATOR_INPUT <= EMVUP or EMVDN or ELEVATOR_DOOR;
-    CURRENT_FLOOR <= STD_LOGIC_VECTOR(FLOOR_NUM);
-    if rising_edge(SYSCLK) then
-        -- Power on clear case
-        if POC='1' then
-            EFLOOR <= "0001"; -- Set EFLOOR to the 1st floor
-            ECOMP <= '1'; -- Set ECOMP to '1'
-        -- If ECOMP is '0'
-        elsif ECOMP='0' then
-            -- If COUNT reaches "000", set ECOMP to '1'
-            if COUNT="000" then
+    PROCESS (current_state, EMVUP, EMVDN, EOPEN, ECLOSE)
+    BEGIN
+        CASE current_state IS
+            WHEN INIT =>
+                EFLOOR <= "0001";
                 ECOMP <= '1';
-            -- Otherwise, decrement COUNT
-            else
-                COUNT <= COUNT - 1;
-            end if;
-        -- If EINPUT is '1'
-        elsif EINPUT='1' then
-            ECOMP <= '0'; -- Set ECOMP to '0'
-            -- If EDOOR is '1'
-            if EDOOR='1' then
-                COUNT <= "101"; -- Set COUNT to 5
-            -- If EDOOR is '0'
-            else
-                COUNT <= "011"; -- Set COUNT to 3
-                -- If EMVUP is '1' and not on the top floor, move up
-                if EMVUP='1' and EFLOOR(3)='0' then
-                    EFLOOR <= EFLOOR sll 1;
-                -- If EMVDN is '1' and not on the bottom floor, move down
-                elsif EMVDN='1' and EFLOOR(0)='0' then
-                    EFLOOR <= EFLOOR srl 1;
-                end if;
-            end if;
-        end if;
-    end if;
-end process;
-end Behavioral;
+                next_state <= IDLE;
 
+            WHEN IDLE =>
+                IF EMVUP = '1' THEN
+						  ECOMP <= '0';
+                    next_state <= MOVE_UP;
+                ELSIF EMVDN = '1' THEN
+						  ECOMP <= '0';
+                    next_state <= MOVE_DOWN;
+                ELSIF EOPEN = '1' THEN
+						  ECOMP <= '0';
+                    next_state <= DOOR_OPEN;
+                ELSE
+						  ECOMP <= '1';
+                    next_state <= IDLE;
+                END IF;
+
+            WHEN MOVE_UP =>
+                IF ECOMP = '1' THEN
+                    next_state <= IDLE;
+                ELSE
+                    EFLOOR <= EFLOOR sll 1;
+                    ECOMP <= '0';
+                    next_state <= MOVE_UP;
+                END IF;
+
+            WHEN MOVE_DOWN =>
+                IF ECOMP = '1' THEN
+                    next_state <= IDLE;
+                ELSE
+                    EFLOOR <= EFLOOR srl 1;
+                    ECOMP <= '0';
+                    next_state <= MOVE_DOWN;
+                END IF;
+
+            WHEN DOOR_OPEN =>
+                IF ECOMP = '1' THEN
+                    next_state <= DOOR_CLOSE;
+                ELSE
+                    ECOMP <= '0';
+                    next_state <= DOOR_OPEN;
+                END IF;
+
+            WHEN DOOR_CLOSE =>
+                IF ECOMP = '1' THEN
+                    next_state <= IDLE;
+                ELSE
+                    ECOMP <= '0';
+                    next_state <= DOOR_CLOSE;
+                END IF;
+
+            WHEN OTHERS =>
+                next_state <= IDLE;
+        END CASE;
+    END PROCESS;
+
+    EF <= STD_LOGIC_VECTOR(EFLOOR);
+
+END behavioral;
